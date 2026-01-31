@@ -1,4 +1,4 @@
-name: Kali-RDP-Stable
+name: Kali-RDP-Fixed-Session
 
 on:
   workflow_dispatch:
@@ -9,24 +9,27 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Installation de l'interface graphique
+      - name: Installation du système graphique
         run: |
           sudo apt-get update
-          # On installe XFCE et XRDP sans les thèmes Kali pour éviter l'erreur 100
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          # Installation forcée des composants manquants pour éviter l'erreur failsafe
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp dbus-x11 x11-xserver-utils
           
-      - name: Configuration de l'utilisateur
+      - name: Configuration de l'utilisateur et de la Session
         run: |
           sudo useradd -m kali
           echo "kali:KALI_PASSWORD_123" | sudo chpasswd
           sudo usermod -aG sudo kali
           
-          # Configuration de la session pour l'utilisateur kali
-          sudo -u kali bash -c "echo xfce4-session > /home/kali/.xsession"
+          # Nettoyage des sessions précédentes et forçage de XFCE
+          sudo -u kali bash -c "echo 'exec startxfce4' > /home/kali/.xsession"
+          sudo -u kali bash -c "chmod +x /home/kali/.xsession"
           
-          # Redémarrage du service RDP
-          sudo systemctl enable xrdp
+          # Configurer XRDP pour utiliser le bon environnement
+          sudo sed -i 's/test -x \/etc\/X11\/Xsession \&\& exec \/etc\/X11\/Xsession/exec startxfce4/g' /etc/xrdp/startwm.sh
+          
           sudo systemctl restart xrdp
+          sudo systemctl enable xrdp
 
       - name: Connexion Tailscale
         run: |
@@ -35,23 +38,19 @@ jobs:
           sleep 5
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=kali-linux-gh
 
-      - name: Installation des outils de base
-        run: |
-          # On installe nmap qui est disponible partout
-          sudo apt-get install -y nmap
-          echo "Si vous voulez plus d'outils, installez-les une fois connecté au RDP via 'sudo apt install'."
-
       - name: Maintien de la connexion
         run: |
           TS_IP=$(tailscale ip -4)
           echo "=========================================="
-          echo "🚀 SERVEUR PRÊT !"
+          echo "🚀 SERVEUR CORRIGÉ !"
           echo "📍 IP TAILSCALE : $TS_IP"
           echo "👤 UTILISATEUR  : kali"
           echo "🔑 MOT DE PASSE : KALI_PASSWORD_123"
           echo "=========================================="
           
           while true; do
-            echo "[$(date)] Runner actif sur $TS_IP"
+            echo "[$(date)] Session active sur $TS_IP"
+            # Vérification que dbus tourne pour éviter l'erreur failsafe
+            pgrep dbus-daemon > /dev/null || sudo service dbus start
             sleep 300
           done
