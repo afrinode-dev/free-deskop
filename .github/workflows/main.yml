@@ -1,4 +1,4 @@
-name: Kali-RDP-Fix
+name: Kali-RDP-Stable
 
 on:
   workflow_dispatch:
@@ -9,48 +9,49 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Préparation du système
+      - name: Installation de l'interface graphique
         run: |
-          sudo apt update
-          # Installation interface graphique et serveur RDP
-          sudo apt install -y xfce4 xfce4-goodies xrdp kali-themes
+          sudo apt-get update
+          # On installe XFCE et XRDP sans les thèmes Kali pour éviter l'erreur 100
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp
           
-      - name: Création de l'utilisateur Kali
+      - name: Configuration de l'utilisateur
         run: |
           sudo useradd -m kali
           echo "kali:KALI_PASSWORD_123" | sudo chpasswd
           sudo usermod -aG sudo kali
           
-          # FIX: Création du fichier .xsession avec les bons droits
+          # Configuration de la session pour l'utilisateur kali
           sudo -u kali bash -c "echo xfce4-session > /home/kali/.xsession"
           
+          # Redémarrage du service RDP
           sudo systemctl enable xrdp
-          sudo systemctl start xrdp
+          sudo systemctl restart xrdp
 
-      - name: Installation de Tailscale
+      - name: Connexion Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscaled --tun=userspace-networking &
           sleep 5
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=kali-linux-gh
 
-      - name: (Optionnel) Installation Outils de base
+      - name: Installation des outils de base
         run: |
-          # Installe nmap et metasploit pour avoir de quoi travailler
-          sudo apt install -y nmap metasploit-framework
+          # On installe nmap qui est disponible partout
+          sudo apt-get install -y nmap
+          echo "Si vous voulez plus d'outils, installez-les une fois connecté au RDP via 'sudo apt install'."
 
-      - name: Maintien de la connexion (Boucle infinie)
+      - name: Maintien de la connexion
         run: |
           TS_IP=$(tailscale ip -4)
           echo "=========================================="
-          echo "🚀 KALI EST PRÊT !"
+          echo "🚀 SERVEUR PRÊT !"
           echo "📍 IP TAILSCALE : $TS_IP"
           echo "👤 UTILISATEUR  : kali"
           echo "🔑 MOT DE PASSE : KALI_PASSWORD_123"
           echo "=========================================="
           
-          # Boucle de maintien avec affichage de l'heure
           while true; do
-            echo "[$(date)] Serveur en ligne - IP: $TS_IP"
+            echo "[$(date)] Runner actif sur $TS_IP"
             sleep 300
           done
