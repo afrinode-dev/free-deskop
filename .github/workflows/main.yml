@@ -1,39 +1,45 @@
-name: Kali-RDP-Permanent
+name: Kali-RDP-Fix
 
 on:
-  workflow_dispatch: # Lancement manuel
+  workflow_dispatch:
 
 jobs:
   kali-job:
     runs-on: ubuntu-latest
-    timeout-minutes: 3600 # Limite max de GitHub (6 heures)
+    timeout-minutes: 3600
 
     steps:
       - name: Préparation du système
         run: |
           sudo apt update
-          # Installation de l'interface graphique légère et du serveur RDP
-          sudo apt install -y xfce4 xfce4-goodies xrdp
-
+          # Installation interface graphique et serveur RDP
+          sudo apt install -y xfce4 xfce4-goodies xrdp kali-themes
+          
       - name: Création de l'utilisateur Kali
         run: |
           sudo useradd -m kali
           echo "kali:KALI_PASSWORD_123" | sudo chpasswd
           sudo usermod -aG sudo kali
-          # Force l'utilisation de XFCE pour cet utilisateur
-          echo "xfce4-session" > /home/kali/.xsession
+          
+          # FIX: Création du fichier .xsession avec les bons droits
+          sudo -u kali bash -c "echo xfce4-session > /home/kali/.xsession"
+          
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
-      - name: Connexion Tailscale (VPN)
+      - name: Installation de Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          # Utilisation du mode userspace pour éviter les erreurs de permissions réseau
           sudo tailscaled --tun=userspace-networking &
           sleep 5
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=kali-gh-runner
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=kali-linux-gh
 
-      - name: Boucle Anti-Fermeture (Maintien en vie)
+      - name: (Optionnel) Installation Outils de base
+        run: |
+          # Installe nmap et metasploit pour avoir de quoi travailler
+          sudo apt install -y nmap metasploit-framework
+
+      - name: Maintien de la connexion (Boucle infinie)
         run: |
           TS_IP=$(tailscale ip -4)
           echo "=========================================="
@@ -43,11 +49,8 @@ jobs:
           echo "🔑 MOT DE PASSE : KALI_PASSWORD_123"
           echo "=========================================="
           
-          # Cette boucle empêche GitHub de couper le job.
-          # Elle écrit dans la console toutes les 5 minutes pour simuler une activité.
+          # Boucle de maintien avec affichage de l'heure
           while true; do
-            echo "[$(date)] RDP toujours actif... Ne pas fermer cet onglet."
-            # Vérifie si le service RDP tourne toujours
-            pgrep xrdp > /dev/null || sudo systemctl start xrdp
+            echo "[$(date)] Serveur en ligne - IP: $TS_IP"
             sleep 300
           done
